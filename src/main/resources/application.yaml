@@ -3,13 +3,11 @@ spring:
     name: appointment
   datasource:
     url: jdbc:postgresql://localhost:5432/postgres
-    username: ${DB_USERNAME:harshanarayanasetty}
-    password: ${DB_PASSWORD:password}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
   flyway:
     enabled: true
     locations: classpath:db/migration
-    baseline-on-migrate: true
-    baseline-version: 3
   jpa:
     hibernate:
       ddl-auto: validate
