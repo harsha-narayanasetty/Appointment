@@ -6,6 +6,7 @@ See [architecture.md](architecture.md) for the design.
 ## Running everything with Docker
 
 ```
+cp .env.example .env     # once; set your own passwords (.env is git-ignored)
 docker compose up --build
 ```
 
@@ -20,11 +21,14 @@ curl -X POST localhost:8080/patients -H 'X-Role: RECEPTIONIST' -H 'Content-Type:
   -d '{"firstName":"Asha","lastName":"Menon","dateOfBirth":"1990-05-17","email":"asha@example.com","phone":"9876543210"}'
 curl -X POST localhost:8080/appointments -H 'X-Role: RECEPTIONIST' -H 'Content-Type: application/json' \
   -d '{"patientId":1,"doctorId":201,"startTime":"2027-01-04T10:00:00"}'
-curl -u dev:dev-password localhost:8081/notifications
+curl localhost:8081/notifications
 ```
 
-`notification-service` is protected by Spring Security's default login; the compose file sets local development
-credentials (`dev` / `dev-password`, override with `NOTIFICATION_USER` / `NOTIFICATION_PASSWORD`).
+`GET /notifications` on `notification-service` is public and every other path is denied (development use only; do not expose it).
+Database credentials come from `.env` (required: `APPOINTMENT_DB_USERNAME`, `APPOINTMENT_DB_PASSWORD`,
+`NOTIFICATIONS_DB_USERNAME`, `NOTIFICATIONS_DB_PASSWORD`; see `.env.example`). Compose passes them to each service as
+`DB_USERNAME` / `DB_PASSWORD`, and nothing secret is committed. To run a service outside Docker,
+export `DB_USERNAME` and `DB_PASSWORD` before `./gradlew bootRun`.
 
 ## Test layout
 

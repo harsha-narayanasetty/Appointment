@@ -1,10 +1,11 @@
 # Runs the whole system: Kafka, one PostgreSQL per service, appointment-service and notification-service.
 #
+#   cp .env.example .env             (once; then edit the values)
 #   docker compose up --build        (from this folder; expects the notification repo next to it: ../notification)
 #   docker compose down -v           (stop and delete all data)
 #
 # appointment-service   http://localhost:8080   (send header "X-Role: RECEPTIONIST" or "X-Role: ADMIN")
-# notification-service  http://localhost:8081/notifications   (HTTP basic auth, see NOTIFICATION_USER below)
+# notification-service  http://localhost:8081/notifications   (public, read-only; development use only)
 
 services:
   kafka:
@@ -36,12 +37,12 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: appointment
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: ${APPOINTMENT_DB_USERNAME:?set APPOINTMENT_DB_USERNAME in .env}
+      POSTGRES_PASSWORD: ${APPOINTMENT_DB_PASSWORD:?set APPOINTMENT_DB_PASSWORD in .env}
     volumes:
       - appointment-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d appointment"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d appointment"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -50,12 +51,12 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: notifications
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: ${NOTIFICATIONS_DB_USERNAME:?set NOTIFICATIONS_DB_USERNAME in .env}
+      POSTGRES_PASSWORD: ${NOTIFICATIONS_DB_PASSWORD:?set NOTIFICATIONS_DB_PASSWORD in .env}
     volumes:
       - notifications-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d notifications"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d notifications"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -71,12 +72,12 @@ services:
       - "8080:8080"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://appointment-db:5432/appointment
-      DB_USERNAME: postgres
-      DB_PASSWORD: postgres
+      DB_USERNAME: ${APPOINTMENT_DB_USERNAME}
+      DB_PASSWORD: ${APPOINTMENT_DB_PASSWORD}
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
 
   notification-service:
-    build: ../notification
+    build: ../Notification
     depends_on:
       notifications-db:
         condition: service_healthy
@@ -86,12 +87,9 @@ services:
       - "8081:8081"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://notifications-db:5432/notifications
-      DB_USERNAME: postgres
-      DB_PASSWORD: postgres
+      DB_USERNAME: ${NOTIFICATIONS_DB_USERNAME}
+      DB_PASSWORD: ${NOTIFICATIONS_DB_PASSWORD}
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      # Spring Security protects this service by default; these are local development credentials only.
-      SPRING_SECURITY_USER_NAME: ${NOTIFICATION_USER:-dev}
-      SPRING_SECURITY_USER_PASSWORD: ${NOTIFICATION_PASSWORD:-dev-password}
 
 volumes:
   appointment-db-data:

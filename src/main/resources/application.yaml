@@ -3,8 +3,8 @@ spring:
     name: appointment
   datasource:
     url: jdbc:postgresql://localhost:5432/postgres
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:postgres}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
   flyway:
     enabled: true
     locations: classpath:db/migration

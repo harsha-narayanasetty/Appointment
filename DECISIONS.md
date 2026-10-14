@@ -99,8 +99,8 @@ rejected, and what would change my mind. Unhandled assumptions are at the end.
 - **A patient can hold overlapping appointments with different doctors.** Only the doctor is protected from double-booking.
 - **No duplicate-patient detection** (same name and phone can be registered twice) and no uniqueness on email.
 - **`GET /appointments` is not paginated**; patients are.
-- **Notification endpoint** is only protected by Spring Security's default login (local credentials set in `docker-compose.yml`); it is a development
-  inspection tool.
+- **Notification endpoint** is public (`GET /notifications` is permitted, every other path is denied, no login); it is a development
+  inspection tool and must not be exposed.
 - **Dead-lettered events need manual replay;** there is no tool for it, and old `PUBLISHED` outbox rows are never cleaned up.
 - **The stub sender is the only "channel";** there is no real email/SMS, consent or rate limiting.
 - **Ordering** is guaranteed per appointment only (the Kafka key is the appointment id), not across appointments.
