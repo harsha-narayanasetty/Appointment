@@ -2,6 +2,9 @@ package com.clinic.appointment.outbox;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.kafka.common.errors.InvalidTopicException;
+import org.apache.kafka.common.errors.RecordTooLargeException;
+import org.apache.kafka.common.errors.SerializationException;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -16,6 +19,9 @@ import java.util.concurrent.TimeUnit;
  * Polls the outbox and sends PENDING rows to Kafka, oldest first.
  * Delivery is AT LEAST ONCE: if the app dies after Kafka accepts a message but before the row is
  * marked PUBLISHED, the row is sent again. That is safe because the consumer de-duplicates by eventId.
+ * A transient failure (Kafka down, timeout) stops the batch and keeps the row PENDING for the next poll.
+ * A permanent failure (record too large, bad topic, serialization) parks only that row as FAILED,
+ * so it cannot block the events behind it.
  */
 @Slf4j
 @Component
@@ -40,6 +46,14 @@ public class OutboxPublisher {
                 Thread.currentThread().interrupt();
                 return;
             } catch (Exception e) {
+                if (isPermanent(e)) {
+                    event.setAttempts(event.getAttempts() + 1);
+                    event.setLastError(truncate(e.toString()));
+                    event.setStatus(OutboxStatus.FAILED);
+                    log.error("Outbox event {} can never be published and is parked as FAILED: {}",
+                            event.getEventId(), e.toString());
+                    continue;
+                }
                 // Kafka is probably down. Record the failure and STOP the batch so order is kept;
                 // the next poll tries again. Nothing is lost: the row stays PENDING.
                 event.setAttempts(event.getAttempts() + 1);
@@ -49,6 +63,17 @@ public class OutboxPublisher {
                 break;
             }
         }
+    }
+
+    static boolean isPermanent(Throwable error) {
+        for (Throwable t = error; t != null; t = t.getCause() == t ? null : t.getCause()) {
+            if (t instanceof RecordTooLargeException
+                    || t instanceof SerializationException
+                    || t instanceof InvalidTopicException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String truncate(String s) {

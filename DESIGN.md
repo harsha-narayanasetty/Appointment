@@ -92,6 +92,22 @@ Proven by `NotificationIdempotencyTest` (same event twice, and 10 simultaneous d
 
 **Retries and dead-letter.** The stub sender fails ~30% of the time. A failed send is recorded (`attempts`, `last_error`) and the Kafka listener retries with back-off **1s, 2s, 4s (3 retries)**, then publishes the record to `appointment.booked.dlt` and marks the notification `DEAD_LETTERED`. Unreadable or incomplete events are not retried and go straight to the dead-letter topic. The offset is committed only after success or dead-lettering, and if publishing to the dead-letter topic itself fails the record is redelivered, so retries are bounded and nothing is dropped.
 
+## Known gaps in messaging (understood, not yet implemented)
+
+Handled: a permanent publish error (record too large, serialization, invalid topic) parks only that outbox row as `FAILED` instead of blocking later events; a permanent dead-letter write failure is logged in full and skipped so a partition is not blocked; permanent send errors (`PermanentSendException`) skip the retries; every sender exception is recorded in `attempts` / `last_error`.
+
+Still needs implementation:
+
+| # | Gap | Planned fix |
+|---|---|---|
+| 1 | **A database outage in the consumer longer than ~7s dead-letters healthy events** (all errors except `InvalidEventException` and `PermanentSendException` use the 1s/2s/4s retries). If the outage also hits `markDeadLettered`, the error is swallowed and the row stays `PENDING` while the event is in the DLT. | Treat database errors as infrastructure failures: retry with a longer capped back-off and never dead-letter. Do not swallow the `markDeadLettered` failure. |
+| 2 | **No alerts or metrics.** Nothing signals `FAILED` outbox rows, an old `PENDING` row, dead-letter volume, a skipped dead-letter write (only a log line, so that is the one data-loss path) or consumer lag. | Add actuator and Micrometer gauges (`FAILED` count, oldest `PENDING` age, DLT count) with alert rules. |
+| 3 | **The outbox publisher holds a database transaction and row locks while waiting on Kafka**, so a slow Kafka can exhaust the connection pool. | Claim rows in a short transaction, send outside it, then record the results (needs a `PUBLISHING` state and reclaim of stale claims). |
+| 4 | **No replay tool for the dead-letter topic**, and its retention is Kafka's default (7 days). | Opt-in replay runner that republishes the DLT to the original topic, plus a longer retention on the DLT. |
+| 5 | **`FAILED` outbox rows need manual attention** (fix or delete); nothing retries or reports them. | Covered by the alerting above; add an admin action to requeue a row. |
+
+Also unaddressed: unbounded outbox retries while Kafka is down (each failed poll writes to the database and logs a warning); `outbox.*` keys in `application.yaml` sit under `spring:` so they do not bind (the code defaults match, so behaviour is unchanged); the dead-letter topic has one partition; no `eventType` check in the consumer; no `restart:` policy in compose; listener concurrency is 1; `min.insync.replicas=2` needs a multi-broker cluster.
+
 ## 6. What I would add for production
 
 Real authentication (signed JWTs from an identity provider instead of the mock `X-Role` header) and authentication on the notification endpoint; a replicated Kafka cluster with TLS and a schema/versioning policy for events; metrics, tracing and alerts on the age of `PENDING` outbox rows and on dead-letter volume; a tool to replay dead-lettered events; clean-up of old `PUBLISHED` outbox rows; a real email/SMS provider with rate limits and consent handling; doctor working hours, holidays and rescheduling; pagination on the appointment list; and CI that runs the tests and a container build on every change.

@@ -53,6 +53,9 @@ rejected, and what would change my mind. Unhandled assumptions are at the end.
   dead-letter topic. The offset is committed only after success or dead-lettering.
 - **Rejected:** unlimited retries (violates "do not retry forever" and blocks the partition); separate retry topics with delays (non-blocking, but
   far more moving parts for this scope); swallowing the error and marking `FAILED` (loses the event).
+- **Also decided:** permanent send errors (`PermanentSendException`) skip retries, and a dead-letter write that can never succeed (record too large,
+  serialization, invalid topic) is logged in full and skipped, so one record cannot block a partition forever. The outbox likewise parks a permanently
+  failing row as `FAILED` and carries on. Remaining gaps are listed in DESIGN.md ("Known gaps in messaging").
 - **Change my mind if:** volume grew enough that blocking a partition during back-off hurt throughput; then I would use non-blocking retry topics.
 
 ## 7. The two services share no code; the event is the contract
@@ -101,7 +104,7 @@ rejected, and what would change my mind. Unhandled assumptions are at the end.
 - **`GET /appointments` is not paginated**; patients are.
 - **Notification endpoint** is public (`GET /notifications` is permitted, every other path is denied, no login); it is a development
   inspection tool and must not be exposed.
-- **Dead-lettered events need manual replay;** there is no tool for it, and old `PUBLISHED` outbox rows are never cleaned up.
+- **Dead-lettered events need manual replay;** there is no tool for it, and old `PUBLISHED` outbox rows are never cleaned up. `FAILED` outbox rows need manual attention. See DESIGN.md, "Known gaps in messaging".
 - **The stub sender is the only "channel";** there is no real email/SMS, consent or rate limiting.
 - **Ordering** is guaranteed per appointment only (the Kafka key is the appointment id), not across appointments.
 - **The 24-hour rule uses the clinic clock at the time of the call;** there is no grace period or override reason recorded.
